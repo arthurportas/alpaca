@@ -21,8 +21,9 @@ var notify      = require("gulp-notify");
 var runSequence = require("run-sequence");
 var nodemon     = require("gulp-nodemon");
 var watch       = require("gulp-watch");
+var wrap        = require('gulp-wrap');
 var bump        = require('gulp-bump');
-var wrap        = require("gulp-wrap-umd");
+var wrapUmd     = require("gulp-wrap-umd");
 var awspublish  = require('gulp-awspublish');
 
 // custom builder_helper stripper to remove builder helper functions
@@ -89,6 +90,7 @@ var paths = {
             "src/js/fields/advanced/IntegerField.js",
             "src/js/fields/advanced/LowerCaseField.js",
             "src/js/fields/advanced/MapField.js",
+            "src/js/fields/advanced/OptionTree.js",
             "src/js/fields/advanced/PasswordField.js",
             "src/js/fields/advanced/PersonalNameField.js",
             "src/js/fields/advanced/PhoneField.js",
@@ -216,6 +218,11 @@ gulp.task("clean", function() {
 
 gulp.task("build-templates", function(cb)
 {
+    // Mozilla
+    var escapeRegExp = function(string){
+            return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
     var processName = function(filepath)
     {
         // strip .js from end
@@ -226,11 +233,11 @@ gulp.task("build-templates", function(cb)
         }
 
         // find "src/templates/" and index up
-        var z = filepath.indexOf("src/templates/");
+        var z = filepath.indexOf(path.join('src','templates',path.sep));
         filepath = filepath.substring(z + 14);
 
         // replace any "/" with .
-        filepath = filepath.replace(new RegExp("/", 'g'), ".");
+        filepath = filepath.replace(new RegExp(escapeRegExp(path.sep), 'g'), ".");
 
         return filepath;
     };
@@ -241,9 +248,11 @@ gulp.task("build-templates", function(cb)
         // web
         gulp.src(paths.templates["web"])
             .pipe(handlebars())
+            .pipe(wrap('Handlebars.template(<%= contents %>)'))
             .pipe(declare({
                 namespace: 'HandlebarsPrecompiled',
-                processName: processName
+                processName: processName,
+                noRedeclare: true
             }))
             .pipe(concat('templates-web.js'))
             .pipe(gulp.dest('build/tmp/')),
@@ -251,9 +260,11 @@ gulp.task("build-templates", function(cb)
         // bootstrap
         gulp.src(paths.templates["bootstrap"])
             .pipe(handlebars())
+            .pipe(wrap('Handlebars.template(<%= contents %>)'))
             .pipe(declare({
                 namespace: 'HandlebarsPrecompiled',
-                processName: processName
+                processName: processName,
+                noRedeclare: true
             }))
             .pipe(concat('templates-bootstrap.js'))
             .pipe(gulp.dest('build/tmp/')),
@@ -261,9 +272,11 @@ gulp.task("build-templates", function(cb)
         // jqueryui
         gulp.src(paths.templates["jqueryui"])
             .pipe(handlebars())
+            .pipe(wrap('Handlebars.template(<%= contents %>)'))
             .pipe(declare({
                 namespace: 'HandlebarsPrecompiled',
-                processName: processName
+                processName: processName,
+                noRedeclare: true
             }))
             .pipe(concat('templates-jqueryui.js'))
             .pipe(gulp.dest('build/tmp/')),
@@ -271,9 +284,11 @@ gulp.task("build-templates", function(cb)
         // jquerymobile
         gulp.src(paths.templates["jquerymobile"])
             .pipe(handlebars())
+            .pipe(wrap('Handlebars.template(<%= contents %>)'))
             .pipe(declare({
                 namespace: 'HandlebarsPrecompiled',
-                processName: processName
+                processName: processName,
+                noRedeclare: true
             }))
             .pipe(concat('templates-jquerymobile.js'))
             .pipe(gulp.dest('build/tmp/'))
@@ -374,7 +389,7 @@ gulp.task("build-scripts", function(cb) {
             // web
             gulp.src(paths.scripts.web)
                 .pipe(concat('alpaca.js'))
-                .pipe(wrap(web_wrap))
+                .pipe(wrapUmd(web_wrap))
                 .pipe(gulp.dest('build/alpaca/web'))
                 .pipe(concat('alpaca.min.js'))
                 .pipe(uglify())
@@ -390,7 +405,7 @@ gulp.task("build-scripts", function(cb) {
             // bootstrap
             gulp.src(paths.scripts.bootstrap)
                 .pipe(concat('alpaca.js'))
-                .pipe(wrap(bootstrap_wrap))
+                .pipe(wrapUmd(bootstrap_wrap))
                 .pipe(gulp.dest('build/alpaca/bootstrap'))
                 .pipe(concat('alpaca.min.js'))
                 .pipe(uglify())
@@ -399,7 +414,7 @@ gulp.task("build-scripts", function(cb) {
             // jqueryui
             gulp.src(paths.scripts.jqueryui)
                 .pipe(concat('alpaca.js'))
-                .pipe(wrap(jqueryui_warp))
+                .pipe(wrapUmd(jqueryui_warp))
                 .pipe(gulp.dest('build/alpaca/jqueryui'))
                 .pipe(concat('alpaca.min.js'))
                 .pipe(uglify())
@@ -408,7 +423,7 @@ gulp.task("build-scripts", function(cb) {
             // jquerymobile
             gulp.src(paths.scripts.jquerymobile)
                 .pipe(concat('alpaca.js'))
-                .pipe(wrap(jquerymobile_wrap))
+                .pipe(wrapUmd(jquerymobile_wrap))
                 .pipe(gulp.dest('build/alpaca/jquerymobile'))
                 .pipe(concat('alpaca.min.js'))
                 .pipe(uglify())

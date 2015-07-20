@@ -53,6 +53,7 @@
                         model.size = formatFileSize(model.size);
                         model.buttons = self.options.buttons;
                         model.view = self.view;
+                        model.fileIndex = i;
 
                         var row = Alpaca.tmpl(self.view.getTemplateDescriptor(templateId), model, self);
 
@@ -70,13 +71,24 @@
 
                         self.handleWrapRow(this, options);
 
-                        // this event gets fired when the AJAX has been handled to delete the remote resource
-                        $(this).find("button.delete").on("destroyed", function() {
+                        var row = $(this);
+
+                        // this event gets fired when fileimpl has cleaned up the DOM element
+                        // we handle Ajax related stuff on our own here
+                        //$(this).find("button.delete").on("destroyed", function() {
+                        $(this).find("button.delete").on("click", function() {
+
+                            var button = $(row).find("button.delete");
+
+                            var fileIndex = $(button).attr("data-file-index");
+                            var file = files[fileIndex];
+
+                            self.onFileDelete.call(self, row, button, file);
+
+                            self.triggerWithPropagation("change");
                             setTimeout(function() {
                                 self.refreshUIState();
-                                self.onFileDelete(row);
-                                self.triggerWithPropagation("change");
-                            }, 250);
+                            }, 200);
                         });
 
                     });
@@ -102,6 +114,9 @@
 
             this.base();
 
+            // disable bottom control buttons (we have a conflict over the 'buttons' namespace)
+            self.options.renderButtons = false;
+
             if (!self.options.buttons)
             {
                 self.options.buttons = [];
@@ -115,17 +130,17 @@
                 });
             }
 
-            if (typeof(self.options.multiple) == "undefined")
+            if (typeof(self.options.multiple) === "undefined")
             {
                 self.options.multiple = false;
             }
 
-            if (typeof(self.options.showUploadPreview) == "undefined")
+            if (typeof(self.options.showUploadPreview) === "undefined")
             {
                 self.options.showUploadPreview = true;
             }
 
-            if (typeof(self.options.showHeaders) == "undefined")
+            if (typeof(self.options.showHeaders) === "undefined")
             {
                 self.options.showHeaders = true;
             }
@@ -134,7 +149,166 @@
             {
                 self.data = [];
             }
+
+            // upload
+            if (!self.options.upload)
+            {
+                self.options.upload = {};
+            }
+
+            // max number of files
+            if (typeof(self.options.maxNumberOfFiles) === "undefined")
+            {
+                if (self.options.upload.maxNumberOfFiles)
+                {
+                    self.options.maxNumberOfFiles = self.options.upload.maxNumberOfFiles;
+                    if (self.options.maxNumberOfFiles === 1)
+                    {
+                        self.options.multiple = false;
+                    }
+                    else if (self.options.maxNumberOfFiles > 1)
+                    {
+                        self.options.multiple = true;
+                    }
+                }
+                else
+                {
+                    self.options.maxNumberOfFiles = 1;
+                    if (typeof(self.options.multiple) === "boolean" && self.options.multiple)
+                    {
+                        self.options.maxNumberOfFiles = -1;
+                    }
+                }
+
+                // copy setting into upload
+                if (self.options.maxNumberOfFiles)
+                {
+                    self.options.upload.maxNumberOfFiles = self.options.maxNumberOfFiles;
+                }
+
+            }
+
+            // max file size
+            if (typeof(self.options.maxFileSize) === "undefined")
+            {
+                if (self.options.upload.maxFileSize)
+                {
+                    self.options.maxFileSize = self.options.upload.maxFileSize;
+                }
+                else
+                {
+                    self.options.maxFileSize = -1; // no limit
+                }
+
+                // copy setting into upload
+                if (self.options.maxFileSize)
+                {
+                    self.options.upload.maxFileSize = self.options.maxFileSize;
+                }
+            }
+
+            // file types
+            if (typeof(self.options.fileTypes) === "undefined")
+            {
+                if (self.options.upload.acceptFileTypes)
+                {
+                    self.options.fileTypes = self.options.upload.acceptFileTypes;
+                }
+                else
+                {
+                    self.options.fileTypes = null; // no restrictions
+                }
+
+                // copy setting into upload
+                if (self.options.fileTypes)
+                {
+                    self.options.upload.acceptFileTypes = self.options.fileTypes;
+                }
+            }
+
+            // error handler
+            if (!self.options.errorHandler)
+            {
+                self.options.errorHandler = function(messages)
+                {
+                    alert(messages.join("\n"));
+                };
+            }
+
+            // if Alpaca is configured for CSRF support and a CSRF cookie or token is available,
+            // then apply it to the headers that are sent over the wire via the underlying ajax
+            // for the file upload control
+
+            // if we have a CSRF token, apply it to the headers
+            var csrfToken = self.determineCsrfToken();
+            if (csrfToken)
+            {
+                if (!self.options.upload) {
+                    self.options.upload = {};
+                }
+
+                if (!self.options.upload.headers) {
+                    self.options.upload.headers = {};
+                }
+
+                self.options.upload.headers[Alpaca.CSRF_HEADER_NAME] = csrfToken;
+            }
+
         },
+
+        determineCsrfToken: function()
+        {
+            // is there a direct token specified?
+            var csrfToken = Alpaca.CSRF_TOKEN;
+            if (!csrfToken)
+            {
+                // is there a cookie that we can pull the value from?
+                for (var t = 0; t < Alpaca.CSRF_COOKIE_NAMES.length; t++)
+                {
+                    var cookieName = Alpaca.CSRF_COOKIE_NAMES[t];
+
+                    var cookieValue = Alpaca.readCookie(cookieName);
+                    if (cookieValue)
+                    {
+                        csrfToken = cookieValue;
+                        break;
+                    }
+                }
+            }
+
+            return csrfToken;
+        },
+
+        prepareControlModel: function(callback)
+        {
+            var self = this;
+
+            self.base(function(model) {
+
+                model.chooseButtonLabel = self.options.chooseButtonLabel;
+                if (!model.chooseButtonLabel)
+                {
+                    model.chooseButtonLabel = self.getMessage("chooseFiles");
+                    if (self.options.maxNumberOfFiles === 1)
+                    {
+                        model.chooseButtonLabel = self.getMessage("chooseFile");
+                    }
+                }
+
+                model.dropZoneMessage = self.options.dropZoneMessage;
+                if (!model.dropZoneMessage)
+                {
+                    model.dropZoneMessage = self.getMessage("dropZoneSingle");
+                    if (model.maxNumberOfFiles === 1)
+                    {
+                        model.dropZoneMessage = self.getMessage("dropZoneMultiple");
+                    }
+                }
+
+                callback(model);
+            });
+        },
+
 
         afterRenderControl: function(model, callback)
         {
@@ -229,13 +403,55 @@
                 }
             };
 
+            // some limit checks
+            fileUploadConfig["add"] = function(e, data) {
+
+                var uploadErrors = [];
+
+                for (var i = 0; i < data.originalFiles.length; i++)
+                {
+                    // file types
+                    if (self.options.fileTypes)
+                    {
+                        var re = self.options.fileTypes;
+                        if (typeof(self.options.fileTypes) === "string")
+                        {
+                            re = new RegExp(self.options.fileTypes);
+                        }
+
+                        if (!re.test(data.originalFiles[i]["type"]))
+                        {
+                            uploadErrors.push('Not an accepted file type: ' + data.originalFiles[i]["type"]);
+                        }
+                    }
+
+                    // size
+                    if (self.options.maxFileSize > -1)
+                    {
+                        if (data.originalFiles[i].size > self.options.maxFileSize) {
+                            uploadErrors.push('Filesize is too big: ' + data.originalFiles[i].size);
+                        }
+                    }
+
+                }
+
+                if (uploadErrors.length > 0)
+                {
+                    self.options.errorHandler(uploadErrors);
+                }
+                else
+                {
+                    data.submit();
+                }
+            };
+
             // allow for extension
             self.applyConfiguration(fileUploadConfig);
 
             // instantiate the control
             var fileUpload = self.fileUpload = $(el).find('.alpaca-fileupload-input').fileupload(fileUploadConfig);
 
-            // When file upload of a file competes, we offer the chance to adjust the data ahead of FileUpload
+            // When file upload of a file completes, we offer the chance to adjust the data ahead of FileUpload
             // getting it.  This is useful for cases where you can't change the server side JSON but could do
             // a little bit of magic in the client.
             fileUpload.bindFirst("fileuploaddone", function(e, data) {
@@ -318,22 +534,43 @@
 
                 var f = function(i)
                 {
-                    if (i == data.files.length) // jshint ignore:line
+                    if (i === data.files.length) // jshint ignore:line
                     {
-                        // done
                         self.setValue(array);
                         return;
                     }
 
-                    self.convertFileToDescriptor(data.files[i], function(err, descriptor) {
+                    self.convertFileToDescriptor(data.files[i], function (err, descriptor) {
+
                         if (descriptor)
                         {
                             array.push(descriptor);
                         }
-                        f(i+1);
+
+                        f(i + 1);
                     });
+
                 };
                 f(0);
+            });
+
+            /**
+             * When file uploads fail, alert...
+             */
+            fileUpload.bind("fileuploadfail", function(e, data) {
+
+                if (data.errorThrown)
+                {
+                    self.onUploadFail(data);
+                }
+            });
+
+
+            /**
+             * Whether success or fail, we handle the results.
+             */
+            fileUpload.bind("fileuploadalways", function(e, data) {
+                self.refreshUIState();
             });
 
             // allow for extension
@@ -587,15 +824,17 @@
 
         afterPreload: function(fileUpload, el, files, callback)
         {
+            var self = this;
+
+            self.refreshUIState();
+
             callback();
         },
 
         /**
-         * @override
-         *
-         * Retrieves an array of descriptors.
+         * @see Alpaca.Fields.ControlField#getControlValue
          */
-        getValue: function()
+        getControlValue: function()
         {
             return this.data;
         },
@@ -642,6 +881,9 @@
                         }
                     });
 
+                    // refresh validation state
+                    self.refreshValidationState();
+
                     callback();
 
                     return;
@@ -672,35 +914,101 @@
             var fileUpload = self.plugin();
             if (fileUpload)
             {
-                var maxNumberOfFiles = 99999;
-                if (self.options.upload && typeof(self.options.upload.maxNumberOfFiles) != "undefined")
-                {
-                    maxNumberOfFiles = self.options.upload.maxNumberOfFiles;
-                }
+                var maxNumberOfFiles = self.options.maxNumberOfFiles;
 
                 if (fileUpload.options.getNumberOfFiles && fileUpload.options.getNumberOfFiles() >= maxNumberOfFiles)
                 {
-                    // disable select files button
-                    $(self.control).find("span.btn.fileinput-button").prop("disabled", true);
-                    $(self.control).find("span.btn.fileinput-button").attr("disabled", "disabled");
-
-                    // hide dropzone message
-                    $(self.control).find(".fileupload-active-zone p.dropzone-message").css("display", "none");
+                    self.refreshButtons(false);
                 }
                 else
                 {
-                    // enabled
-                    $(self.control).find("span.btn.fileinput-button").prop("disabled", false);
-                    $(self.control).find("span.btn.fileinput-button").attr("disabled", null);
-
-                    // show dropzone message
-                    $(self.control).find(".fileupload-active-zone p.dropzone-message").css("display", "block");
+                    self.refreshButtons(true);
                 }
             }
         },
 
-        onFileDelete: function(domEl)
+        refreshButtons: function(enabled)
         {
+            var self = this;
+
+            // disable select files button
+            $(self.control).find(".btn.fileinput-button").prop("disabled", true);
+            $(self.control).find(".btn.fileinput-button").attr("disabled", "disabled");
+
+            // hide dropzone message
+            $(self.control).find(".fileupload-active-zone p.dropzone-message").css("display", "none");
+
+            if (enabled)
+            {
+                // enable select files button
+                $(self.control).find(".btn.fileinput-button").prop("disabled", false);
+                $(self.control).find(".btn.fileinput-button").attr("disabled", null);
+
+                // show dropzone message
+                $(self.control).find(".fileupload-active-zone p.dropzone-message").css("display", "block");
+            }
+        },
+
+        onFileDelete: function(rowEl, buttonEl, file)
+        {
+            var self = this;
+
+            var deleteUrl = file.deleteUrl;
+            var deleteMethod = file.deleteType;
+
+            var c = {
+                "method": deleteMethod,
+                "url": deleteUrl,
+                "headers": {}
+            };
+
+            var csrfToken = self.determineCsrfToken();
+            if (csrfToken)
+            {
+                c.headers[Alpaca.CSRF_HEADER_NAME] = csrfToken;
+            }
+
+            $.ajax(c);
+        },
+
+        onUploadFail: function(data)
+        {
+            var self = this;
+
+            for (var i = 0; i < data.files.length; i++)
+            {
+                data.files[i].error = data.errorThrown;
+            }
+
+            if (self.options.uploadFailHandler)
+            {
+                self.options.uploadFailHandler.call(self, data);
+            }
+        },
+
+        /**
+         * @see Alpaca.Field#disable
+         */
+        disable: function()
+        {
+            // disable select button
+            $(this.field).find(".fileinput-button").prop("disabled", true);
+            $(this.field).find(".fileinput-button").attr("disabled", "disabled");
+
+            // hide the upload well
+            $(this.field).find(".alpaca-fileupload-well").css("visibility", "hidden");
+        },
+
+        /**
+         * @see Alpaca.Field#enable
+         */
+        enable: function()
+        {
+            $(this.field).find(".fileinput-button").prop("disabled", false);
+            $(this.field).find(".fileinput-button").removeAttr("disabled");
+
+            // show the upload well
+            $(this.field).find(".alpaca-fileupload-well").css("visibility", "visible");
         },
 
         /* builder_helpers */
@@ -724,12 +1032,70 @@
          */
         getType: function() {
             return "array";
+        },
+
+        /**
+         * @private
+         * @see Alpaca.Fields.TextField#getSchemaOfSchema
+         */
+        getSchemaOfOptions: function() {
+            return Alpaca.merge(this.base(), {
+                "properties": {
+                    "maxNumberOfFiles": {
+                        "title": "Maximum Number of Files",
+                        "description": "The maximum number of files to allow to be uploaded.  If greater than zero, the maximum number will be constrained.  If -1, then no limit is imposed.",
+                        "type": "number",
+                        "default": 1
+                    },
+                    "maxFileSize": {
+                        "title": "Maximum File Size (in bytes)",
+                        "description": "The maximum file size allowed per upload.  If greater than zero, the maximum file size will be limited to the given size in bytes.  If -1, then no limit is imposed.",
+                        "type": "number",
+                        "default": -1
+                    },
+                    "fileTypes": {
+                        "title": "File Types",
+                        "description": "A regular expression limiting the file types that can be uploaded based on filename",
+                        "type": "string"
+                    },
+                    "multiple": {
+                        "title": "Multiple",
+                        "description": "Whether to allow multiple file uploads.  If maxNumberOfFiles is not specified, multiple will toggle between 1 and unlimited.",
+                        "type": "boolean",
+                        "default": false
+                    },
+                    "showUploadPreview": {
+                        "title": "Show Upload Preview",
+                        "description": "Whether to show thumbnails for uploaded assets (requires preview support)",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "errorHandler": {
+                        "title": "Error Handler",
+                        "description": "Optional function handler to be called when there is an error uploading one or more files.  This handler is typically used to instantiate a modal or other UI element to inform the end user.",
+                        "type": "function"
+                    },
+                    "uploadFailHandler": {
+                        "title": "Upload Fail Handler",
+                        "description": "Optional function handler to be called when one or more files fails to upload.  This function is responsible for parsing the underlying xHR request and populating the error message state.",
+                        "type": "function"
+                    }
+                }
+            });
         }
 
         /* end_builder_helpers */
     });
 
     Alpaca.registerFieldClass("upload", Alpaca.Fields.UploadField);
+
+    Alpaca.registerMessages({
+        "chooseFile": "Choose file...",
+        "chooseFiles": "Choose files...",
+        "dropZoneSingle": "Click the Choose button or Drag and Drop a file here to upload...",
+        "dropZoneMultiple": "Click the Choose button or Drag and Drop files here to upload..."
+    });
+
 
     // https://github.com/private-face/jquery.bind-first/blob/master/dev/jquery.bind-first.js
     // jquery.bind-first.js

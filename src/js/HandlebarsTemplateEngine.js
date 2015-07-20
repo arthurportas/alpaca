@@ -217,6 +217,17 @@
         return message;
     });
 
+    Handlebars.registerHelper("disguise", function(text, character) {
+
+        var replaced = "";
+        for (var i = 0; i < text.length; i++) {
+            replaced += character;
+        }
+
+        return replaced;
+
+    });
+
 
 
     //Handlebars.registerHelper("each", helpers["each"]);
@@ -287,6 +298,9 @@
                 var functionString = Handlebars.precompile(html);
                 template = eval("(" + functionString + ")"); // jshint ignore:line
 
+                // convert to function - fn(model)
+                template = Handlebars.template(template);
+
                 // CACHE: write
                 COMPILED_TEMPLATES[cacheKey] = template;
             }
@@ -315,7 +329,7 @@
             var html = null;
             try
             {
-                html = Handlebars.template(templateFunction)(model);
+                html = templateFunction(model);
             }
             catch (e)
             {

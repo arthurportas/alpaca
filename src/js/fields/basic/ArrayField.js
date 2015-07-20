@@ -46,6 +46,32 @@
                 this.options.actionbarStyle = "top";
             }
 
+            if (!this.schema.items)
+            {
+                this.schema.items = {};
+            }
+
+            if (!this.options.items)
+            {
+                this.options.items = {};
+            }
+
+            // legacy - uniqueItems, maxItems, minItems
+            if (this.schema.items.maxItems) {
+                this.schema.maxItems = this.schema.items.maxItems;
+                delete this.schema.items.maxItems;
+            }
+
+            if (this.schema.items.minItems) {
+                this.schema.minItems = this.schema.items.minItems;
+                delete this.schema.items.minItems;
+            }
+
+            if (this.schema.items.uniqueItems) {
+                this.schema.uniqueItems = this.schema.items.uniqueItems;
+                delete this.schema.items.uniqueItems;
+            }
+
             // determine whether we are using "ruby on rails" compatibility mode
             this.options.rubyrails = false;
             if (this.parent && this.parent.options && this.parent.options.form && this.parent.options.form.attributes)
@@ -56,12 +82,7 @@
                 }
             }
 
-            if (!this.options.items)
-            {
-                this.options.items = {};
-            }
-
-            var toolbarSticky = true;
+            var toolbarSticky = undefined;
 
             if (!Alpaca.isEmpty(this.view.toolbarSticky))
             {
@@ -74,6 +95,12 @@
             }
 
             this.options.toolbarSticky = toolbarSticky;
+
+            // by default, hide toolbar when children.count > 0
+            if (typeof(self.options.hideToolbarWithChildren) === "undefined")
+            {
+                self.options.hideToolbarWithChildren = true;
+            }
 
             // Enable forceRevalidation option so that any change in children will trigger parent's revalidation.
             if (this.schema.items && this.schema.uniqueItems)
@@ -195,13 +222,10 @@
                 "label": self.getMessage("addItemButtonLabel"),
                 "action": "add",
                 "iconClass": self.view.getStyle("addIcon"),
-                "click": function(key, action)
-                {
-                    self.resolveItemSchemaOptions(function(itemSchema, itemOptions) {
-                        var itemData = Alpaca.createEmptyDataInstance(itemSchema);
-                        self.addItem(0, itemSchema, itemOptions, itemData, function() {
-                            // all done
-                        });
+                "click": function(key, action) {
+
+                    self.handleToolBarAddItemClick(function(item) {
+                        // done
                     });
                 }
             });
@@ -227,13 +251,9 @@
                 "iconClass": self.view.getStyle("addIcon"),
                 "click": function(key, action, itemIndex) {
 
-                    self.resolveItemSchemaOptions(function(itemSchema, itemOptions) {
-                        var itemData = Alpaca.createEmptyDataInstance(itemSchema);
-                        self.addItem(itemIndex + 1, itemSchema, itemOptions, itemData, function() {
-                            // all done
-                        });
+                    self.handleActionBarAddItemClick(itemIndex, function(item) {
+                        // done
                     });
-
                 }
             });
             applyAction(self.actionbar.actions, "remove", {
@@ -242,10 +262,9 @@
                 "iconClass": self.view.getStyle("removeIcon"),
                 "click": function(key, action, itemIndex) {
 
-                    self.removeItem(itemIndex, function() {
-                        // all done
+                    self.handleActionBarRemoveItemClick(itemIndex, function(item) {
+                        // done
                     });
-
                 }
             });
             applyAction(self.actionbar.actions, "up", {
@@ -254,10 +273,9 @@
                 "iconClass": self.view.getStyle("upIcon"),
                 "click": function(key, action, itemIndex) {
 
-                    self.moveItem(itemIndex, itemIndex - 1, self.options.animate, function() {
-                        // all done
+                    self.handleActionBarMoveItemUpClick(itemIndex, function() {
+                        // done
                     });
-
                 }
             });
             applyAction(self.actionbar.actions, "down", {
@@ -266,10 +284,9 @@
                 "iconClass": self.view.getStyle("downIcon"),
                 "click": function(key, action, itemIndex) {
 
-                    self.moveItem(itemIndex, itemIndex + 1, self.options.animate, function() {
-                        // all done
+                    self.handleActionBarMoveItemDownClick(itemIndex, function() {
+                        // done
                     });
-
                 }
             });
             cleanupActions(self.actionbar.actions, self.actionbar.showLabels);
@@ -319,11 +336,18 @@
             // then we need to add the new fields
             if (i < data.length)
             {
-                self.resolveItemSchemaOptions(function(schema, options) {
+                self.resolveItemSchemaOptions(function(itemSchema, itemOptions, circular) {
 
-                    if (!schema)
+                    if (!itemSchema)
                     {
                         Alpaca.logDebug("Unable to resolve schema for item: " + i);
+                    }
+
+                    // we only allow addition if the resolved schema isn't circularly referenced
+                    // or the schema is optional
+                    if (circular)
+                    {
+                        return Alpaca.throwErrorWithCallback("Circular reference detected for schema: " + JSON.stringify(itemSchema), self.errorCallback);
                     }
 
                     // waterfall functions
@@ -335,7 +359,7 @@
                         {
                             return function(callback)
                             {
-                                self.addItem(i, schema, options, data[i], function() {
+                                self.addItem(i, itemSchema, itemOptions, data[i], function() {
 
                                     // by the time we get here, we may have constructed a very large child chain of
                                     // sub-dependencies and so we use nextTick() instead of a straight callback so as to
@@ -362,14 +386,14 @@
         },
 
         /**
-         * @see Alpaca.ContainerField#getValue
+         * @see Alpaca.ContainerField#getContainerValue
          */
-        getValue: function()
+        getContainerValue: function()
         {
             // if we're empty and we're also not required, then we hand back undefined
             if (this.children.length === 0 && !this.isRequired())
             {
-                return;
+                return [];
             }
 
             // otherwise, construct an array and had it back
@@ -399,11 +423,18 @@
 
             var items = [];
 
-            if (self.data)
+            if (self.data && self.data.length > 0)
             {
                 // all items within the array have the same schema and options
                 // so we only need to load this once
-                self.resolveItemSchemaOptions(function(schema, options) {
+                self.resolveItemSchemaOptions(function(itemSchema, itemOptions, circular) {
+
+                    // we only allow addition if the resolved schema isn't circularly referenced
+                    // or the schema is optional
+                    if (circular)
+                    {
+                        return Alpaca.throwErrorWithCallback("Circular reference detected for schema: " + JSON.stringify(itemSchema), self.errorCallback);
+                    }
 
                     // waterfall functions
                     var funcs = [];
@@ -415,7 +446,7 @@
                         {
                             return function(callback)
                             {
-                                self.createItem(index, schema, options, value, function(item) {
+                                self.createItem(index, itemSchema, itemOptions, value, function(item) {
 
                                     items.push(item);
 
@@ -622,7 +653,9 @@
                         }
                     }
 
-                    var circular = (refCount > 1);
+                    // use a higher limit for arrays, perhaps 10
+                    //var circular = (refCount > 1);
+                    var circular = (refCount > 10);
 
                     var resolvedItemSchema = {};
                     if (originalItemSchema) {
@@ -673,13 +706,13 @@
 
             status = this._validateMaxItems();
             valInfo["tooManyItems"] = {
-                "message": status ? "" : Alpaca.substituteTokens(this.getMessage("tooManyItems"), [this.schema.items.maxItems]),
+                "message": status ? "" : Alpaca.substituteTokens(this.getMessage("tooManyItems"), [this.schema.maxItems]),
                 "status": status
             };
 
             status = this._validateMinItems();
             valInfo["notEnoughItems"] = {
-                "message": status ? "" : Alpaca.substituteTokens(this.getMessage("notEnoughItems"), [this.schema.items.minItems]),
+                "message": status ? "" : Alpaca.substituteTokens(this.getMessage("notEnoughItems"), [this.schema.minItems]),
                 "status": status
             };
 
@@ -692,9 +725,9 @@
          */
         _validateEqualMaxItems: function()
         {
-            if (this.schema.items && this.schema.items.maxItems)
+            if (this.schema.maxItems && this.schema.maxItems >= 0)
             {
-                if (this.getSize() >= this.schema.items.maxItems)
+                if (this.getSize() >= this.schema.maxItems)
                 {
                     return false;
                 }
@@ -709,9 +742,9 @@
          */
         _validateEqualMinItems: function()
         {
-            if (this.schema.items && this.schema.items.minItems)
+            if (this.schema.minItems && this.schema.minItems >= 0)
             {
-                if (this.getSize() <= this.schema.items.minItems)
+                if (this.getSize() <= this.schema.minItems)
                 {
                     return false;
                 }
@@ -726,9 +759,9 @@
          */
         _validateMinItems: function()
         {
-            if (this.schema.items && this.schema.items.minItems)
+            if (this.schema.minItems && this.schema.minItems >= 0)
             {
-                if (this.getSize() < this.schema.items.minItems)
+                if (this.getSize() < this.schema.minItems)
                 {
                     return false;
                 }
@@ -743,9 +776,9 @@
          */
         _validateMaxItems: function()
         {
-            if (this.schema.items && this.schema.items.maxItems)
+            if (this.schema.maxItems && this.schema.maxItems >= 0)
             {
-                if (this.getSize() > this.schema.items.maxItems)
+                if (this.getSize() > this.schema.maxItems)
                 {
                     return false;
                 }
@@ -955,7 +988,7 @@
             //
 
             var toolbarEl = $(this.getFieldEl()).find(".alpaca-array-toolbar[data-alpaca-array-toolbar-field-id='" + self.getId() + "']");
-            if (this.children.length > 0)
+            if (this.children.length > 0 && self.options.hideToolbarWithChildren)
             {
                 // hide toolbar
                 $(toolbarEl).hide();
@@ -986,15 +1019,15 @@
             //
 
             // if we're not using the "sticky" toolbar, then show and hide the item action buttons when hovered
-            if (!this.options.toolbarSticky)
+            if (typeof(this.options.toolbarSticky) === "undefined" || this.options.toolbarSticky === null)
             {
                 // find each item
-                var items = this.getFieldEl().find(".alpaca-container-item");
+                var items = this.getFieldEl().find(".alpaca-container-item[data-alpaca-container-item-parent-field-id='" + self.getId() +  "']");
                 $(items).each(function(itemIndex) {
 
                     // find the actionbar for this item
                     // find from containerItemEl
-                    var actionbarEl = $(self.containerItemEl).find(".alpaca-array-actionbar[data-alpaca-array-actionbar-field-id='" + self.getId() +  "'][data-alpaca-array-actionbar-item-index='" + itemIndex + "']");
+                    var actionbarEl = $(self.getFieldEl()).find(".alpaca-array-actionbar[data-alpaca-array-actionbar-parent-field-id='" + self.getId() +  "'][data-alpaca-array-actionbar-item-index='" + itemIndex + "']");
                     if (actionbarEl && actionbarEl.length > 0)
                     {
                         $(this).hover(function() {
@@ -1007,14 +1040,19 @@
                     }
                 });
             }
-            else
+            else if (this.options.toolbarSticky)
             {
-                // otherwise, always show the actionbars
-                $(self.getFieldEl()).find(".alpaca-array-actionbar[data-alpaca-array-actionbar-field-id='" + self.getId() +  "']").show();
+                // always show the actionbars
+                $(self.getFieldEl()).find(".alpaca-array-actionbar[data-alpaca-array-actionbar-parent-field-id='" + self.getId() +  "']").show();
+            }
+            else if (!this.options.toolbarSticky)
+            {
+                // always hide the actionbars
+                $(self.getFieldEl()).find(".alpaca-array-actionbar[data-alpaca-array-actionbar-parent-field-id='" + self.getId() +  "']").hide();
             }
 
             // CLICK: actionbar buttons
-            var actionbarEls = $(this.getFieldEl()).find(".alpaca-array-actionbar[data-alpaca-array-actionbar-parent-field-id='" + self.getId() + "']");
+            var actionbarEls = $(self.getFieldEl()).find(".alpaca-array-actionbar[data-alpaca-array-actionbar-parent-field-id='" + self.getId() + "']");
             $(actionbarEls).each(function() {
 
                 var targetIndex = $(this).attr("data-alpaca-array-actionbar-item-index");
@@ -1040,6 +1078,11 @@
                 // if we're at max capacity, disable "add" buttons
                 if (self._validateEqualMaxItems())
                 {
+                    $(this).find("[data-alpaca-array-toolbar-action='add']").each(function(index) {
+                        $(this).removeClass('alpaca-button-disabled');
+                        self.fireCallback("enableButton", this);
+                    });
+
                     $(this).find("[data-alpaca-array-actionbar-action='add']").each(function(index) {
                         $(this).removeClass('alpaca-button-disabled');
                         self.fireCallback("enableButton", this);
@@ -1047,6 +1090,11 @@
                 }
                 else
                 {
+                    $(this).find("[data-alpaca-array-toolbar-action='add']").each(function(index) {
+                        $(this).addClass('alpaca-button-disabled');
+                        self.fireCallback("disableButton", this);
+                    });
+
                     $(this).find("[data-alpaca-array-actionbar-action='add']").each(function(index) {
                         $(this).addClass('alpaca-button-disabled');
                         self.fireCallback("disableButton", this);
@@ -1094,6 +1142,86 @@
             var self = this;
 
             return $(self.container);
+        },
+
+        handleToolBarAddItemClick: function(callback)
+        {
+            var self = this;
+
+            self.resolveItemSchemaOptions(function(itemSchema, itemOptions, circular) {
+
+                // we only allow addition if the resolved schema isn't circularly referenced
+                // or the schema is optional
+                if (circular)
+                {
+                    return Alpaca.throwErrorWithCallback("Circular reference detected for schema: " + JSON.stringify(itemSchema), self.errorCallback);
+                }
+
+                // how many children do we have currently?
+                var insertionPoint = self.children.length;
+
+                var itemData = Alpaca.createEmptyDataInstance(itemSchema);
+                self.addItem(insertionPoint, itemSchema, itemOptions, itemData, function(item) {
+                    if (callback) {
+                        callback(item);
+                    }
+                });
+            });
+        },
+
+        handleActionBarAddItemClick: function(itemIndex, callback)
+        {
+            var self = this;
+
+            self.resolveItemSchemaOptions(function(itemSchema, itemOptions, circular) {
+
+                // we only allow addition if the resolved schema isn't circularly referenced
+                // or the schema is optional
+                if (circular)
+                {
+                    return Alpaca.throwErrorWithCallback("Circular reference detected for schema: " + JSON.stringify(itemSchema), self.errorCallback);
+                }
+
+                var itemData = Alpaca.createEmptyDataInstance(itemSchema);
+                self.addItem(itemIndex + 1, itemSchema, itemOptions, itemData, function(item) {
+                    if (callback) {
+                        callback(item);
+                    }
+                });
+            });
+        },
+
+        handleActionBarRemoveItemClick: function(itemIndex, callback)
+        {
+            var self = this;
+
+            self.removeItem(itemIndex, function() {
+                if (callback) {
+                    callback();
+                }
+            });
+        },
+
+        handleActionBarMoveItemUpClick: function(itemIndex, callback)
+        {
+            var self = this;
+
+            self.moveItem(itemIndex, itemIndex - 1, self.options.animate, function() {
+                if (callback) {
+                    callback();
+                }
+            });
+        },
+
+        handleActionBarMoveItemDownClick: function(itemIndex, callback)
+        {
+            var self = this;
+
+            self.moveItem(itemIndex, itemIndex + 1, self.options.animate, function() {
+                if (callback) {
+                    callback();
+                }
+            });
         },
 
         doAddItem: function(index, item)
@@ -1162,12 +1290,15 @@
                     // refresh validation state
                     self.refreshValidationState();
 
+                    // dispatch event: add
+                    self.trigger("add", item);
+
                     // trigger update
                     self.triggerUpdate();
 
                     if (callback)
                     {
-                        callback();
+                        callback(item);
                     }
                 });
             }
@@ -1211,6 +1342,9 @@
 
                 // refresh validation state
                 self.refreshValidationState();
+
+                // dispatch event: remove
+                self.trigger("remove", childIndex);
 
                 // trigger update
                 self.triggerUpdate();
@@ -1326,8 +1460,8 @@
                 self.updateChildDOMElements();
 
                 // update the action bar bindings
-                $(sourceContainer).find(".alpaca-container-item[data-alpaca-array-actionbar-item-index='" + sourceIndex + "']").attr("data-alpaca-array-actionbar-item-index", targetIndex);
-                $(targetContainer).find(".alpaca-container-item[data-alpaca-array-actionbar-item-index='" + targetIndex + "']").attr("data-alpaca-array-actionbar-item-index", sourceIndex);
+                $(sourceContainer).find(".alpaca-container-item[data-alpaca-array-actionbar-item-index='" + sourceIndex + "'][data-alpaca-container-item-parent-field-id='" + self.getId() +  "']").attr("data-alpaca-array-actionbar-item-index", targetIndex);
+                $(targetContainer).find(".alpaca-container-item[data-alpaca-array-actionbar-item-index='" + targetIndex + "'][data-alpaca-container-item-parent-field-id='" + self.getId() +  "']").attr("data-alpaca-array-actionbar-item-index", sourceIndex);
 
                 // update the array item toolbar state
                 self.updateToolbars();
@@ -1337,6 +1471,9 @@
 
                 // trigger update
                 self.triggerUpdate();
+
+                // dispatch event: move
+                self.trigger("move");
 
                 if (callback)
                 {
@@ -1390,25 +1527,23 @@
                     "items": {
                         "title": "Array Items",
                         "description": "Schema for array items.",
-                        "type": "object",
-                        "properties": {
-                            "minItems": {
-                                "title": "Minimum Items",
-                                "description": "Minimum number of items.",
-                                "type": "number"
-                            },
-                            "maxItems": {
-                                "title": "Maximum Items",
-                                "description": "Maximum number of items.",
-                                "type": "number"
-                            },
-                            "uniqueItems": {
-                                "title": "Items Unique",
-                                "description": "Item values should be unique if true.",
-                                "type": "boolean",
-                                "default": false
-                            }
-                        }
+                        "type": "object"
+                    },
+                    "minItems": {
+                        "title": "Minimum Items",
+                        "description": "Minimum number of items.",
+                        "type": "number"
+                    },
+                    "maxItems": {
+                        "title": "Maximum Items",
+                        "description": "Maximum number of items.",
+                        "type": "number"
+                    },
+                    "uniqueItems": {
+                        "title": "Items Unique",
+                        "description": "Item values should be unique if true.",
+                        "type": "boolean",
+                        "default": false
                     }
                 }
             };
@@ -1428,18 +1563,16 @@
             return Alpaca.merge(this.base(), {
                 "fields": {
                     "items": {
-                        "type": "object",
-                        "fields": {
-                            "minItems": {
-                                "type": "integer"
-                            },
-                            "maxItems": {
-                                "type": "integer"
-                            },
-                            "uniqueItems": {
-                                "type": "checkbox"
-                            }
-                        }
+                        "type": "object"
+                    },
+                    "minItems": {
+                        "type": "integer"
+                    },
+                    "maxItems": {
+                        "type": "integer"
+                    },
+                    "uniqueItems": {
+                        "type": "checkbox"
                     }
                 }
             });
@@ -1454,9 +1587,9 @@
                 "properties": {
                     "toolbarSticky": {
                         "title": "Sticky Toolbar",
-                        "description": "Array item toolbar will be aways on if true.",
+                        "description": "If true, the array item toolbar will always be enabled.  If false, the toolbar is always disabled.  If undefined or null, the toolbar will appear when hovered over.",
                         "type": "boolean",
-                        "default": false
+                        "default": undefined
                     },
                     "toolbarStyle": {
                         "title": "Toolbar Style",
@@ -1544,6 +1677,12 @@
                                 }
                             }
                         }
+                    },
+                    "hideToolbarWithChildren": {
+                        "type": "boolean",
+                        "title": "Hide Toolbar with Children",
+                        "description": "Indicates whether to hide the top toolbar when child elements are available.",
+                        "default": true
                     }
                 }
             };

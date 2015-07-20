@@ -144,6 +144,14 @@
 
 
 
+/** ************************************** **/
+/** CK EDITOR                             **/
+/** ************************************** **/
+
+.alpaca-field-ckeditor.alpaca-invalid > .cke
+{
+    border-color: #f04124;
+}
 
 .has-error .multiselect
 {
@@ -151,6 +159,46 @@
     -webkit-box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
     box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
 }
+
+
+/** ************************************** **/
+/** OPTIONTREE                             **/
+/** ************************************** **/
+
+.alpaca-field-optiontree {
+
+}
+
+.alpaca-field-optiontree .optiontree {
+
+}
+
+.alpaca-field-optiontree .optiontree .optiontree-selector {
+
+}
+
+.alpaca-field-optiontree.optiontree-horizontal {
+
+}
+
+.alpaca-field-optiontree.optiontree-horizontal .optiontree {
+    display: inline-block;
+}
+
+.alpaca-field-optiontree.optiontree-horizontal .optiontree .optiontree-selector {
+    display: inline-block;
+    padding-left: 4px;
+}
+
+.alpaca-field-optiontree.optiontree-horizontal input {
+    display: inline-block;
+    width: auto;
+}
+
+.alpaca-field-optiontree.optiontree-horizontal label {
+    display: block;
+}
+
 
 
 

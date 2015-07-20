@@ -136,9 +136,9 @@
         /**
          * Reconstructs the data object from the child fields.
          *
-         * @see Alpaca.Field#getValue
+         * @see Alpaca.ContainerField#getContainerValue
          */
-        getValue: function()
+        getContainerValue: function()
         {
             // if we don't have any children and we're not required, hand back empty object
             if (this.children.length === 0 && !this.isRequired())
@@ -175,7 +175,7 @@
                         {
                             assignedValue = fieldValue;
                         }
-                        else if (fieldValue)
+                        else if (fieldValue || fieldValue === 0)
                         {
                             assignedValue = fieldValue;
                         }
@@ -244,7 +244,7 @@
          */
         createItems: function(callback)
         {
-            var _this = this;
+            var self = this;
 
             var items = [];
 
@@ -255,13 +255,13 @@
             //
             // this is primarily maintained for debugging purposes, so as to inform the developer of mismatches
             var extraDataProperties = {};
-            for (var dataKey in _this.data) {
+            for (var dataKey in self.data) {
                 extraDataProperties[dataKey] = dataKey;
             }
 
-            var properties = _this.data;
-            if (_this.schema && _this.schema.properties) {
-                properties = _this.schema.properties;
+            var properties = self.data;
+            if (self.schema && self.schema.properties) {
+                properties = self.schema.properties;
             }
 
             var cf = function()
@@ -291,9 +291,12 @@
             for (var propertyId in properties)
             {
                 var itemData = null;
-                if (_this.data)
+                if (self.data)
                 {
-                    itemData = _this.data[propertyId];
+                    if (self.data.hasOwnProperty(propertyId))
+                    {
+                        itemData = self.data[propertyId];
+                    }
                 }
 
                 var pf = (function(propertyId, itemData, extraDataProperties)
@@ -301,21 +304,19 @@
                     return function(callback)
                     {
                         // only allow this if we have data, otherwise we end up with circular reference
-                        _this.resolvePropertySchemaOptions(propertyId, function(schema, options, circular) {
+                        self.resolvePropertySchemaOptions(propertyId, function (schema, options, circular) {
 
                             // we only allow addition if the resolved schema isn't circularly referenced
                             // or the schema is optional
-                            if (circular)
-                            {
+                            if (circular) {
                                 return Alpaca.throwErrorWithCallback("Circular reference detected for schema: " + JSON.stringify(schema), _this.errorCallback);
                             }
 
-                            if (!schema)
-                            {
+                            if (!schema) {
                                 Alpaca.logDebug("Unable to resolve schema for property: " + propertyId);
                             }
 
-                            _this.createItem(propertyId, schema, options, itemData, null, function(addedItemControl) {
+                            self.createItem(propertyId, schema, options, itemData, null, function (addedItemControl) {
 
                                 items.push(addedItemControl);
 
@@ -325,7 +326,7 @@
                                 // by the time we get here, we may have constructed a very large child chain of
                                 // sub-dependencies and so we use nextTick() instead of a straight callback so as to
                                 // avoid blowing out the stack size
-                                Alpaca.nextTick(function() {
+                                Alpaca.nextTick(function () {
                                     callback();
                                 });
                             });
@@ -338,6 +339,22 @@
             }
 
             Alpaca.series(propertyFunctions, function(err) {
+
+                // sort by order
+                items.sort(function(a, b) {
+
+                    var orderA = a.options.order;
+                    if (!orderA) {
+                        orderA = 0;
+                    }
+                    var orderB = b.options.order;
+                    if (!orderB) {
+                        orderB = 0;
+                    }
+
+                    return (orderA - orderB);
+                });
+
                 cf();
             });
         },
@@ -1019,6 +1036,9 @@
                 // refresh validation state
                 self.refreshValidationState(true, function() {
 
+                    // dispatch event: add
+                    self.trigger("add", child);
+
                     // trigger update
                     self.triggerUpdate();
 
@@ -1056,6 +1076,9 @@
             childField.destroy();
 
             this.refreshValidationState(true, function() {
+
+                // dispatch event: remove
+                self.trigger("remove", childField);
 
                 // trigger update handler
                 self.triggerUpdate();
@@ -1488,6 +1511,15 @@
 
                                     refreshSteps();
                                 }
+                                else
+                                {
+                                    // allow focus to settle on invalid field
+                                    window.setTimeout(function() {
+                                        self.focus(function(field) {
+                                            // done
+                                        });
+                                    }, 250);
+                                }
                             });
                         }
                     });
@@ -1517,6 +1549,15 @@
                                             }
                                         }
                                     }
+                                }
+                                else
+                                {
+                                    // allow focus to settle on invalid field
+                                    window.setTimeout(function() {
+                                        self.focus(function(field) {
+                                            // done
+                                        });
+                                    }, 250);
                                 }
                             });
                         }
@@ -1806,6 +1847,9 @@
                 // trigger update
                 self.triggerUpdate();
 
+                // dispatch event: move
+                self.trigger("move");
+
                 if (callback)
                 {
                     callback();
@@ -1889,6 +1933,11 @@
         getSchemaOfOptions: function() {
             var schemaOfOptions = Alpaca.merge(this.base(), {
                 "properties": {
+                },
+                "order": {
+                    "type": "number",
+                    "title": "Order",
+                    "description": "Allows for optional specification of the index of this field in the properties array."
                 }
             });
 

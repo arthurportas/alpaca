@@ -51,6 +51,34 @@
             }
 
             this.controlDescriptor = this.view.getTemplateDescriptor("control-" + controlTemplateType, self);
+
+            // buttons
+            if (typeof(this.options.renderButtons) === "undefined")
+            {
+                this.options.renderButtons = true;
+            }
+            if (this.options.buttons)
+            {
+                for (var k in this.options.buttons)
+                {
+                    if (this.options.buttons[k].label)
+                    {
+                        this.options.buttons[k].value = this.options.buttons[k].label;
+                    }
+                    if (this.options.buttons[k].title)
+                    {
+                        this.options.buttons[k].value = this.options.buttons[k].title;
+                    }
+                    if (!this.options.buttons[k].type)
+                    {
+                        this.options.buttons[k].type = "button";
+                    }
+                    if (!this.options.buttons[k].styles)
+                    {
+                        this.options.buttons[k].styles = this.view.styles.button;
+                    }
+                }
+            }
         },
 
         getControlEl: function()
@@ -213,6 +241,34 @@
                 }
             }
 
+            // buttons
+            $(this.getFieldEl()).find(".alpaca-control-button").each(function() {
+
+                $(this).click(function(e) {
+                    $(this).attr("button-pushed", true);
+                });
+
+                // custom click handler?
+                var key = $(this).attr("data-key");
+                if (key)
+                {
+                    var buttonConfig = self.options.buttons[key];
+                    if (buttonConfig)
+                    {
+                        if (buttonConfig.click)
+                        {
+                            $(this).click(function(control, handler) {
+                                return function(e) {
+                                    e.preventDefault();
+                                    handler.call(control, e);
+                                }
+                            }(self, buttonConfig.click));
+                        }
+                    }
+                }
+            });
+
+
             callback();
         },
 
@@ -270,6 +326,36 @@
         setDefault: function() {
             var defaultData = Alpaca.isEmpty(this.schema['default']) ? "" : this.schema['default'];
             this.setValue(defaultData);
+        },
+
+        /**
+         * Returns the value of this field.
+         *
+         * @returns {Any} value Field value.
+         */
+        getValue: function()
+        {
+            var self = this;
+
+            var value = this.base();
+
+            if (!this.isDisplayOnly())
+            {
+                value = self.getControlValue();
+            }
+
+            // some correction for type
+            value = self.ensureProperType(value);
+
+            return value;
+        },
+
+        /**
+         * Extension point
+         */
+        getControlValue: function()
+        {
+            return this._getControlVal(true);
         },
 
         /**
@@ -349,34 +435,60 @@
             });
 
             control.focus(function(e) {
+
+                self.wasFocused = true;
+
                 if (!self.suspendBlurFocus)
                 {
-                    self.onFocus.call(self, e);
-                    self.trigger("focus", e);
+                    var x = self.onFocus.call(self, e);
+                    if (x !== false) {
+                        x = self.trigger("focus", e);
+                    }
+
+                    return x;
                 }
             });
 
             control.blur(function(e) {
+
+                self.wasBlurred = true;
+
                 if (!self.suspendBlurFocus)
                 {
-                    self.onBlur.call(self, e);
-                    self.trigger("blur", e);
+                    var x = self.onBlur.call(self, e);
+                    if (x !== false) {
+                        x = self.trigger("blur", e);
+                    }
+
+                    return x;
                 }
             });
 
             control.keypress(function(e) {
-                self.onKeyPress.call(self, e);
-                self.trigger("keypress", e);
+                var x = self.onKeyPress.call(self, e);
+                if (x !== false) {
+                    x = self.trigger("keypress", e);
+                }
+
+                return x;
             });
 
             control.keyup(function(e) {
-                self.onKeyUp.call(self, e);
-                self.trigger("keyup", e);
+                var x = self.onKeyUp.call(self, e);
+                if (x !== false) {
+                    x = self.trigger("keyup", e);
+                }
+
+                return x;
             });
 
             control.keydown(function(e) {
-                self.onKeyDown.call(self, e);
-                self.trigger("keydown", e);
+                var x = self.onKeyDown.call(self, e);
+                if (x !== false) {
+                    x = self.trigger("keydown", e);
+                }
+
+                return x;
             });
         },
 
@@ -389,14 +501,32 @@
         {
             var self = this;
 
-            // if the field is currently invalid, then we provide early feedback to the user as to when they enter
-            // if the field was valid, we don't render invalidation feedback until they blur the field
+            var refresh = false;
 
-            // was the control valid previously?
-            var wasValid = this.isValid();
-            if (!wasValid)
+            // if we're in edit mode
+            if (self.view.type && self.view.type === 'edit')
             {
-                //
+                // if the field is currently invalid, then we provide early feedback to the user as to when they enter
+                // if the field was valid, we don't render invalidation feedback until they blur the field
+
+                // was the control valid previously?
+                var wasValid = this.isValid();
+                if (!wasValid)
+                {
+                    refresh = true;
+                }
+            }
+            else if (self.view.type && self.view.type === 'create')
+            {
+                var wasValid = this.isValid();
+                if (!wasValid && self.wasBlurred)
+                {
+                    refresh = true;
+                }
+            }
+
+            if (refresh)
+            {
                 // we use a timeout because at this exact moment, the value of the control is still the old value
                 // jQuery raises the keypress event ahead of the input receiving the new data which would incorporate
                 // the key that was pressed
@@ -404,7 +534,7 @@
                 // this timeout provides the browser with enough time to plug the value into the input control
                 // which the validation logic uses to determine whether the control is now in a valid state
                 //
-                window.setTimeout(function() {
+                window.setTimeout(function () {
                     self.refreshValidationState();
                 }, 50);
             }

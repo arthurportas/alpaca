@@ -46,7 +46,7 @@
 
                         self.editor = CKEDITOR.replace($(self.control)[0], self.options.ckeditor);
 
-                    }, 250);
+                    }, 500);
                 }
 
                 // if the ckeditor's dom element gets destroyed, make sure we clean up the editor instance
@@ -63,6 +63,90 @@
 
                 callback();
             });
+        },
+
+        initControlEvents: function()
+        {
+            var self = this;
+
+            setTimeout(function() {
+
+                // click event
+                self.editor.on("click", function(e) {
+                    self.onClick.call(self, e);
+                    self.trigger("click", e);
+                });
+
+                // change event
+                self.editor.on("change", function(e) {
+                    self.onChange();
+                    self.triggerWithPropagation("change", e);
+                });
+
+                // blur event
+                self.editor.on('blur', function(e) {
+                    self.onBlur();
+                    self.trigger("blur", e);
+                });
+
+                // focus event
+                self.editor.on("focus", function(e) {
+                    self.onFocus.call(self, e);
+                    self.trigger("focus", e);
+                });
+
+                // keypress event
+                self.editor.on("key", function(e) {
+                    self.onKeyPress.call(self, e);
+                    self.trigger("keypress", e);
+                });
+
+                // NOTE: these do not seem to work with CKEditor?
+                /*
+                // keyup event
+                self.editor.on("keyup", function(e) {
+                    self.onKeyUp.call(self, e);
+                    self.trigger("keyup", e);
+                });
+
+                // keydown event
+                self.editor.on("keydown", function(e) {
+                    self.onKeyDown.call(self, e);
+                    self.trigger("keydown", e);
+                });
+                */
+
+            }, 525); // NOTE: odd timing dependencies
+        },
+
+        setValue: function(value)
+        {
+            var self = this;
+
+            // be sure to call into base method
+            this.base(value);
+
+            if (self.editor)
+            {
+                self.editor.setData(value);
+            }
+        },
+
+        /**
+         * @see Alpaca.Fields.ControlField#getControlValue
+         */
+        getControlValue: function()
+        {
+            var self = this;
+
+            var value = null;
+
+            if (self.editor)
+            {
+                value = self.editor.getData();
+            }
+
+            return value;
         },
 
         /**

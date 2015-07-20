@@ -23,9 +23,9 @@
         },
 
         /**
-         * @see Alpaca.Field#getValue
+         * @see Alpaca.Fields.ControlField#getControlValue
          */
-        getValue: function()
+        getControlValue: function()
         {
             return this._getControlVal(true);
         },
@@ -67,9 +67,14 @@
         /**
          * @see Alpaca.Field#focus
          */
-        focus: function()
+        focus: function(onFocusCallback)
         {
             this.control.focus();
+
+            if (onFocusCallback)
+            {
+                onFocusCallback(this);
+            }
         },
 
         /**

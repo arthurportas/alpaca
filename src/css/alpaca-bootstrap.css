@@ -15,7 +15,7 @@ legend.alpaca-container-label
 
 .alpaca-array-actionbar
 {
-    height: 40px;
+    /*height: 40px;*/
 }
 
 .alpaca-array-actionbar.alpaca-array-actionbar-top
@@ -69,6 +69,11 @@ legend.alpaca-container-label
     padding: 10px;
 }
 */
+
+.alpaca-control-buttons-container
+{
+    margin-top: 10px;
+}
 
 .alpaca-container-item > .alpaca-container > .alpaca-field-object
 {
@@ -136,6 +141,7 @@ legend.alpaca-container-label
 
 
 
+
 /** FIElDS **/
 .alpaca-field.alpaca-field-upload .fileupload-active-zone
 {
@@ -145,6 +151,25 @@ legend.alpaca-container-label
 .alpaca-field.alpaca-field-upload .template-download TD.error
 {
     color: red;
+    word-break: break-all;
+}
+.alpaca-field.alpaca-field-upload .template-download TD.error .label
+{
+    color: red;
+    font-size: 16px;
+    text-align: left;
+}
+
+.alpaca-field.alpaca-field-upload .template-upload TD.error
+{
+    color: red;
+    word-break: break-all;
+}
+.alpaca-field.alpaca-field-upload .template-upload TD.error .label
+{
+    color: red;
+    font-size: 16px;
+    text-align: left;
 }
 
 .alpaca-field.alpaca-field-address .alpaca-field-address-mapcanvas

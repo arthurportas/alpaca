@@ -97,9 +97,10 @@
         /**
          * @see Alpaca.Field#getValue
          */
-        getValue: function(val)
+        convertValue: function(val)
         {
             var _this = this;
+
             if (Alpaca.isArray(val))
             {
                 $.each(val, function(index, itemVal) {
@@ -247,7 +248,7 @@
                             "error": function(jqXHR, textStatus, errorThrown) {
 
                                 self.errorCallback({
-                                    "message":"Unable to load data from uri : " + _this.options.dataSource,
+                                    "message":"Unable to load data from uri : " + self.options.dataSource,
                                     "stage": "DATASOURCE_LOADING_ERROR",
                                     "details": {
                                         "jqXHR" : jqXHR,
@@ -273,6 +274,18 @@
                             {
                                 self.selectOptions.push(self.options.dataSource[i]);
                             }
+                        }
+
+                        completionFunction();
+                    }
+                    else if (Alpaca.isObject(self.options.dataSource))
+                    {
+                        for (var k in self.options.dataSource)
+                        {
+                            self.selectOptions.push({
+                                "text": self.options.dataSource[k],
+                                "value": k
+                            });
                         }
 
                         completionFunction();

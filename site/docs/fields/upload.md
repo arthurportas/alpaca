@@ -35,26 +35,17 @@ The following are typically specified:
 
 ```
 {
-    // type of data being posted
-    "dataType": "json",
-
     // url of the endpoint
     "url": "/",
 
-    // "get" or "post" typically
-    "method": "post",
+    // (optional) type of data being posted
+    "dataType": "json",
 
-    // whether to show preview images
-    "showUploadPreview": true,
+    // (optional) "get" or "post" typically
+    "method": "post",
 
     // whether to automatically upload when a file is selected
     "autoUpload": true,
-
-    // max allowed file size in bytes
-    "maxFileSize": 25000000,
-
-    // maximum number of files that are permitted to be uploaded
-    "maxNumberOfFiles": 1,
 
     // whether to show a separate submit button (needed if not auto-upload)
     "showSubmitButton": false
@@ -71,7 +62,7 @@ an HTML5 File API compatible browser.  Which, as you might expect, doesn't inclu
 
 ## Example 1
 Single related file upload.
-An example of a single file upload control.  Uploads are posted to /upload.php.
+An example of a single file upload control.  Uploads are posted to <code>http://www.httpbin.org</code>.
 We've wired this up using a postRender callback so you can see the generated JSON by clicking 'view'.
 <div id="field1"> </div>
 {% raw %}
@@ -79,14 +70,14 @@ We've wired this up using a postRender callback so you can see the generated JSO
 $("#field1").alpaca({
     "view": "bootstrap-create",
     "schema": {
-        "type": "string",
+        "type": "array",
     },
     "options": {
         "type": "upload",
         "label": "Upload File",
         "upload": {
-            "url": "upload.php",
-            "autoUpload": true,
+            "url": "http://www.httpbin.org/post",
+            "autoUpload": true
         }
     },
     "postRender": function(control) {
@@ -105,9 +96,69 @@ $("#field1").alpaca({
 
 ## Example 2
 Content creation form with support for multiple uploads as attachments.  Note that the file uploads post right away
-to /upload.php.  The form is not submitted until the user clicks submit at which time the form posts to form.php.
+to <code>http://www.httpbin.org</code>.
 
-The '''formData''' property lets us pass multipart data along with each upload.  This is useful if the upload.php script
+The form is not submitted until the user clicks submit at which time the form posts to form.php.
+
+In addition, we specify the <code>maxFileSize</code>, <code>maxNumberOfFiles</code>, <code>multiple</code> and
+<code>fileTypes</code> settings to adjust the behavior of the control.
+
+<div id="field2"> </div>
+{% raw %}
+<script type="text/javascript" id="field2-script">
+$("#field2").alpaca({
+    "view": "bootstrap-create",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "title": "Title",
+                "required": true
+            },
+            "files": {
+                "type": "array",
+                "title": "Files",
+                "required": true
+            }
+        }
+    },
+    "options": {
+        "fields": {
+            "files": {
+                "type": "upload",
+                "multiple": true,
+                "maxFileSize": 25000000,
+                "maxNumberOfFiles": 3,
+                "fileTypes": "/(\.|\/)(gif|jpe?g|png)$/i",
+                "upload": {
+                    "url": "http://www.httpbin.org/post"
+                }
+            }
+        },
+        "focus": true,
+        "form": {
+            "attributes": {
+                "method": "POST",
+                "action": "form.php",
+                "enctype": "multipart/form-data"
+            },
+            "buttons": {
+                "submit": {
+                    "value": "Submit"
+                }
+            }
+        }
+    }
+});
+</script>
+{% endraw %}
+
+
+
+
+## Example 3
+The <code>formData</code> property lets us pass multipart data along with each upload.  This is useful if the upload.php script
 knows how to handle multipart.  It can use this form data to make decisions about where to place content.  The upload
 control supports tokenization with some limited information:
 
@@ -142,49 +193,43 @@ control supports tokenization with some limited information:
     </tbody>
 </table>
 
-<div id="field2"> </div>
+<div id="field3"> </div>
 {% raw %}
-<script type="text/javascript" id="field2-script">
-$("#field2").alpaca({
+<script type="text/javascript" id="field3-script">
+$("#field3").alpaca({
     "view": "bootstrap-create",
     "schema": {
         "type": "object",
         "properties": {
             "title": {
-                "type": "string"
+                "type": "string",
+                "title": "Title",
+                "required": true
             },
             "files": {
-                "type": "string"
+                "type": "array",
+                "title": "Files",
+                "required": true
             }
         }
     },
     "options": {
         "fields": {
-            "title": {
-                "type": "text",
-                "label": "Title"
-            },
             "files": {
                 "type": "upload",
-                "label": "Files",
                 "upload": {
                     "formData": {
                         "path": "/folder1/folder2/{filename}"
                     },
-                    "url": "upload.php",
-                    "autoUpload": true,
-                    "maxFileSize": 25000000,
-                    "maxNumberOfFiles": 1,
-                    "showSubmitButton": false
-                },
-                "multiple": true
+                    "url": "upload.php"
+                }
             }
         },
         "focus": true,
         "form": {
             "attributes": {
                 "method": "POST",
-                "action": "form.php",
+                "action": "http://www.httpbin.org/post",
                 "enctype": "multipart/form-data"
             },
             "buttons": {
@@ -197,5 +242,81 @@ $("#field2").alpaca({
 });
 </script>
 {% endraw %}
+
+
+
+## Example 4
+The <code>errorHandler</code> property lets us specify a custom error handler to be fired when an upload is attempted
+and is ruled to be invalid (such as an invalid file or an invalid size).
+
+Here is an example where we restrict the file types to *.blahblah and a file size of 1.  Attempting to upload just about
+anything will cause these to trip so that you can test it out.  The custom errorHandler brings up a Bootstrap modal
+instead of a regular ol' JavaScript alert.
+
+<div id="field4"> </div>
+{% raw %}
+<script type="text/javascript" id="field4-script">
+$("#field4").alpaca({
+    "view": "bootstrap-create",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "files": {
+                "type": "array",
+                "title": "Files",
+                "required": true
+            }
+        }
+    },
+    "options": {
+        "fields": {
+            "files": {
+                "type": "upload",
+                "maxFileSize": 1,
+                "fileTypes": "/(\.|\/)(blahblah)$/i",
+                "maxNumberOfFiles": 3,
+                "upload": {
+                    "url": "http://www.httpbin.org/post"
+                },
+                "errorHandler": function(messages) {
+                    $("#errorModal").find(".modal-body").append("<p>" + messages.join("<br/>") + "</p>");
+                    $("#errorModal").modal("show");
+                }
+            }
+        },
+        "focus": true,
+        "form": {
+            "attributes": {
+                "method": "POST",
+                "action": "http://www.httpbin.org/post",
+                "enctype": "multipart/form-data"
+            },
+            "buttons": {
+                "submit": {
+                    "value": "Submit"
+                }
+            }
+        }
+    }
+});
+</script>
+{% endraw %}
+<div id="errorModal" class="modal fade">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                <h4 class="modal-title">An error has occurred!</h4>
+            </div>
+            <div class="modal-body">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 
 
